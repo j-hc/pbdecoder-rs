@@ -1,5 +1,6 @@
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use serde::Serialize;
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 
 type VarInt = u64;
@@ -11,8 +12,12 @@ mod ptypes {
     pub const FIXED32: u64 = 5;
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "lowercase", tag = "type", content = "value")]
+#[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "lowercase", tag = "type", content = "value")
+)]
 pub enum ProtoValue {
     Fixed32(u32),
     Fixed64(u64),
@@ -21,13 +26,17 @@ pub enum ProtoValue {
     Parts(Vec<ProtoPart>),
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "lowercase")
+)]
 pub struct ProtoPart {
     pub index: u64,
-    #[serde(skip)]
+    #[cfg_attr(feature = "serialize", serde(skip))]
     pub offset: usize,
-    #[serde(flatten)]
+    #[cfg_attr(feature = "serialize", serde(flatten))]
     pub value: ProtoValue,
 }
 
@@ -52,18 +61,11 @@ impl ProtoPart {
         }
     }
 
+    // this probably doesnt work
     pub fn write(&self, new_val: ProtoValue, buf: &mut [u8]) -> io::Result<()> {
         if std::mem::discriminant(&self.value) != std::mem::discriminant(&new_val) {
             panic!("non-matching value types");
         }
-
-        println!("{:?}", &buf[self.offset..self.offset + 10]);
-        println!("bu ofset write: {}", self.offset);
-        println!(
-            "{}",
-            String::from_utf8_lossy(&buf[self.offset..self.offset + 10])
-        );
-
         let mut buf = &mut buf[self.offset..];
         let r = match new_val {
             ProtoValue::Fixed32(v) => buf.write_u32::<BigEndian>(v),
@@ -71,7 +73,6 @@ impl ProtoPart {
             ProtoValue::String(v) => (&mut buf[..v.len()]).write_all(v.as_bytes()),
             _ => panic!(),
         };
-        println!("{:?}", &buf[self.offset..self.offset + 10]);
 
         r
     }
